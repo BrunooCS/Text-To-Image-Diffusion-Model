@@ -10,6 +10,8 @@ from tqdm import tqdm
 from matplotlib.animation import FuncAnimation
 import os
 from sentence_transformers import SentenceTransformer
+from torchvision.datasets import ImageFolder
+from torch.utils.checkpoint import checkpoint
 
 # Set random seed for reproducibility
 torch.manual_seed(42)
@@ -17,15 +19,15 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 # Hyperparameters
-batch_size = 128
-image_size = 28
+batch_size = 256
+image_size = 128
 channels = 3
-epochs = 80
+epochs = 250
 lr = 1e-4
 num_timesteps = 1000
 min_beta = 1e-4
 max_beta = 0.01
-num_classes = 10 
+num_classes = 10
 
 
 # Diffusion hyperparameters
@@ -107,7 +109,7 @@ class Block(nn.Module):
         self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
         self.bnorm1 = nn.BatchNorm2d(out_ch)
         self.bnorm2 = nn.BatchNorm2d(out_ch)
-        self.relu = nn.ReLU()
+        self.relu = nn.ReLU(inplace=True)
         
     def forward(self, x, t):
         # First Conv
@@ -133,30 +135,34 @@ class ConditionalUNet(nn.Module):
         self.time_mlp = nn.Sequential(
             SinusoidalPositionEmbeddings(time_dim),
             nn.Linear(time_dim, time_dim),
-            nn.ReLU()
+            nn.ReLU(inplace=True),
         )
                 
         # Initial projection
         self.conv0 = nn.Conv2d(in_channels, model_channels, 3, padding=1)
         
-        # Downsampling - reduced to 2 blocks instead of 3 for 28x28 images
-        self.downs = nn.ModuleList([
-            Block(model_channels, model_channels*2, time_dim+embedding_size),
-            Block(model_channels*2, model_channels*4, time_dim+embedding_size)
+        # Input 128x128
+        self.downs = nn.ModuleList([    
+            Block(model_channels, model_channels*2, time_dim+embedding_size),    # 64x64
+            Block(model_channels*2, model_channels*4, time_dim+embedding_size),  # 32x32
+            Block(model_channels*4, model_channels*8, time_dim+embedding_size),  # 16x16
+            Block(model_channels*8, model_channels*16, time_dim+embedding_size)  # 8x8
         ])
         
         # Middle - uses standard convolution instead of another downsampling block
         self.middle_block = nn.Sequential(
-            nn.Conv2d(model_channels*4, model_channels*4, 3, padding=1),
-            nn.BatchNorm2d(model_channels*4),
-            nn.ReLU(),
-            nn.Conv2d(model_channels*4, model_channels*4, 3, padding=1),
-            nn.BatchNorm2d(model_channels*4),
-            nn.ReLU()
+            nn.Conv2d(model_channels*16, model_channels*16, 3, padding=1),
+            nn.BatchNorm2d(model_channels*16),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(model_channels*16, model_channels*16, 3, padding=1),
+            nn.BatchNorm2d(model_channels*16),
+            nn.ReLU(inplace=True)
         )
         
         # Upsampling - reduced to 2 blocks to match the downsampling
         self.ups = nn.ModuleList([
+            Block(model_channels*16, model_channels*8, time_dim+embedding_size, up=True),
+            Block(model_channels*8, model_channels*4, time_dim+embedding_size, up=True),
             Block(model_channels*4, model_channels*2, time_dim+embedding_size, up=True),
             Block(model_channels*2, model_channels, time_dim+embedding_size, up=True)
         ])
@@ -165,7 +171,7 @@ class ConditionalUNet(nn.Module):
         self.final_conv = nn.Sequential(
             nn.Conv2d(model_channels*2, model_channels, 3, padding=1),
             nn.BatchNorm2d(model_channels),
-            nn.ReLU(),
+            nn.ReLU(inplace=True),
             nn.Conv2d(model_channels, out_channels, 3, padding=1)
         )
         
@@ -284,19 +290,48 @@ def sample(model, image_size, batch_size, y, channels=1, device=device, save_all
                          y=y, device=device, save_all=save_all)
 
 
-# Load MNIST dataset
-def load_data():
+def load_data(data_dir="data/tiny-imagenet-200/"):
     transform = transforms.Compose([
         transforms.Resize((image_size, image_size)),
         transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
+        transforms.Normalize((0.5,), (0.5,)),
+        transforms.RandomHorizontalFlip(),
     ])
+
+    dataset = ImageFolder(root=f"{data_dir}/train", transform=transform)
     
-    trainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)
-    trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
-    
-    
-    return trainloader, trainset
+    trainloader = DataLoader(
+        dataset, 
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=0,
+        pin_memory=True,
+    )
+    return trainloader, dataset
+
+
+
+def load_labels(dataset, words_file = "data/tiny-imagenet-200/words.txt"):
+
+    wnid_to_text = {}
+    with open(words_file, "r") as f:
+        for line in f:
+            parts = line.strip().split("\t")
+            if len(parts) == 2:
+                wnid, name = parts
+                wnid_to_text[wnid] = name.split(",")[0]
+
+    # Build a mapping from numerical class index to text prompt
+    label2text = {}
+    for idx, wnid in enumerate(dataset.classes):
+        if wnid in wnid_to_text:
+            label2text[int(idx)] = wnid_to_text[wnid]
+        else:
+            label2text[int(idx)] = wnid  # Fallback to wnid if missing
+
+    return label2text
+            
+
 
 # Visualization Functions
 def show_images(images, title="", save_path=None):
@@ -330,7 +365,7 @@ def show_images(images, title="", save_path=None):
     
     # plt.show()
 
-def visualize_forward_process(img, num_steps=10):
+def visualize_forward_process(img, num_steps=10, output_dir='output'):
     """
     Visualize the forward (noising) process
     
@@ -357,8 +392,7 @@ def visualize_forward_process(img, num_steps=10):
         plt.axis('off')
     
     plt.tight_layout()
-    plt.savefig('output/forward_diffusion', bbox_inches='tight')
-    # plt.show()
+    plt.savefig(os.path.join(output_dir, f"forward_diffusion.png"), bbox_inches='tight')
 
 
 def create_diffusion_gif(images, filename='diffusion_process.gif', fps=5):
@@ -472,25 +506,23 @@ def get_word_embeddings(words):
 
 def main():
 
-    label2name = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
-    label2emb = get_word_embeddings(label2name)
-
-
-
     # Create output directory
-    output_dir = "output"
+    output_dir = "output_ImageNet"
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     
     # Load data
     trainloader, dataset = load_data()
+
+    # Obatin label enbeddings
+    label2text =  load_labels(dataset)
+    label2emb = get_word_embeddings(label2text)
     
     # Create model
     model = ConditionalUNet(in_channels=channels, out_channels=channels, num_classes=num_classes).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4, foreach=True)
+    scaler = torch.GradScaler('cuda')
     
-    # Move diffusion parameters to device
-    betas = linear_beta_schedule(num_timesteps).to(device)
     
     # For tracking loss history
     loss_history = []
@@ -502,22 +534,24 @@ def main():
         progress_bar = tqdm(trainloader, desc=f"Epoch {epoch+1}/{epochs}")
         
         for batch_idx, (images, labels_idx) in enumerate(progress_bar):
-            labels = label2emb[labels_idx]
+            label_emb = label2emb[labels_idx]
             images = images.to(device)
-            labels = labels.to(device)
+            label_emb = label_emb.to(device)
             
             # Reset gradients
             optimizer.zero_grad()
             
-            # Sample random timesteps
-            t = torch.randint(0, num_timesteps, (images.shape[0],), device=device).long()
-            
-            # Calculate loss
-            loss = p_losses(model, images, t, labels)
+            with torch.autocast('cuda'):
+                # Sample random timesteps
+                t = torch.randint(0, num_timesteps, (images.shape[0],), device=device).long()
+                
+                # Calculate loss
+                loss = p_losses(model, images, t, label_emb)
             
             # Update weights
-            loss.backward()
-            optimizer.step()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             
             # Update progress bar
             epoch_loss += loss.item()
@@ -546,8 +580,7 @@ def main():
     model.eval()
 
     save_path = os.path.join(output_dir, "generated_samples")
-    # show_images(images[:16], title="Original MNIST Images", save_path=save_path)
-    visualize_forward_process(images[0], num_steps=10)
+    visualize_forward_process(images[0], num_steps=10, output_dir=output_dir)
 
     # Generate a grid of samples for each digit
     print("Generating final samples for all digits...")
@@ -561,18 +594,18 @@ def main():
         
         plt.figure(figsize=(10, 10))
         plt.imshow(grid.permute(1, 2, 0).cpu())
-        plt.title(f"Generated {label2name[digit]}")
+        plt.title(f"Generated {label2text[digit]}")
         plt.axis('off')
-        plt.savefig(os.path.join(output_dir, f"final_class_{label2name[digit]}.png"))
+        plt.savefig(os.path.join(output_dir, f"final_class_{label2text[digit]}.png"))
         plt.close()
          
     # Create animations for the generation process
     print("Creating animations for the diffusion process...")
     for digit in range(10):
-        print(f"Creating animation for  {label2name[digit]}...")
+        print(f"Creating animation for  {label2text[digit]}...")
         label = label2emb[digit].unsqueeze(0).to(device)
         samples = sample(model, image_size, 1, label, channels, save_all=True)
-        create_diffusion_gif(samples, filename=os.path.join(output_dir, f"class_{label2name[digit]}_generation.gif"))
+        create_diffusion_gif(samples, filename=os.path.join(output_dir, f"class_{label2text[digit]}_generation.gif"))
 
 if __name__ == "__main__":
     main()
