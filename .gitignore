@@ -1,7 +1,6 @@
 data/
-output_ImageNet/
-output_Cifar/
 *.json
 __pycache__/
 *.pyc
 *.log
+*.pt

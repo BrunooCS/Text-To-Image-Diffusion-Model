@@ -9,10 +9,9 @@ from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 import time
 
-# Local import for your model
+# Local import 
 from models.unet import ConditionalUNet
 
-# Set random seed for reproducibility and define device
 torch.manual_seed(42)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
@@ -79,7 +78,6 @@ def p_sample_loop(model, shape, y, device, return_intermediate=False, num_interm
         return img, intermediate_images
     return img
 
-# Sentence Transformer for text embeddings
 sentence_model = None
 
 def load_sentence_model():
@@ -160,7 +158,7 @@ def generate_images(text_input, num_images, show_process, progress=gr.Progress()
     else:
         return results, None
 
-# Custom CSS for modern, minimalistic UI
+# Custom CSS 
 custom_css = """
 :root {
     --primary-color: #000000;
