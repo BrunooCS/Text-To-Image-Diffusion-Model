@@ -1,98 +1,124 @@
-# Diffusion Model
+<h1 align="center">
+Diffusion Model
+</h1>
 
-A text-to-image diffusion model that generates realistic images from text descriptions.
+<p align="center">
+  <img src="output_ImageNet/forward_diffusion.png" alt="Forward Diffusion Process" width="800" style="border-radius: 6px">
+</p>
 
-![Forward Diffusion Process](output_ImageNet/forward_diffusion.png)
+<p align="center">
+  A powerful conditional diffusion model for image generation from text descriptions.
+</p>
+
+<p align="center">
+    <a href="https://www.python.org/">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/c/c3/Python-logo-notext.svg" alt="Python" width="50">
+  </a>
+  <a href="https://pytorch.org/">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/1/10/PyTorch_logo_icon.svg" alt="PyTorch" width="50">
+  </a>
+  <a href="https://www.gradio.app/">
+    <img src="https://www.gradio.app/_app/immutable/assets/gradio.CHB5adID.svg" alt="Gymnasium" width="200">
+  </a>
+</p>
+
+---
 
 ## Overview
 
-This project implements a conditional diffusion model that can generate images based on text prompts. The model is trained on the ImageNet dataset and can create a variety of images from simple text descriptions.
+This project implements a conditional diffusion model that generates images from text descriptions. The model learns to gradually denoise random Gaussian noise into coherent images, guided by text prompts.
 
-## Features
+<p align="center">
+  <img src="output_ImageNet/class_goldfish_generation.gif" alt="Generation Process" width="400" style="border-radius: 12px">
+</p>
 
-- 🖼️ **Text-to-Image Generation**: Create images from text descriptions
-- 🔄 **Diffusion Process**: Implementation of forward and reverse diffusion
-- 🌐 **Web Interface**: Interactive UI for generating and visualizing images
-- 📊 **Visualization Tools**: Tools to visualize the diffusion process
+## Key Features
 
-## Examples
+- **Text-to-Image Generation**: Convert textual descriptions into high-quality images
+- **Web Interface**: User-friendly interface for image generation
+- **Conditional Generation**: Fine-grained control over generated content
+- **Interactive Process Visualization**: Watch the denoising process in real-time
+- **Multi-Class Support**: Generate images across various categories
 
-### Image Generation Process
+## Architecture
 
-Watch how the model gradually transforms random noise into a coherent image:
-
-![Goldfish Generation](output_ImageNet/class_goldfish_generation.gif)
-
-### Sample Generations
-
-The model can generate various classes of images:
-
-![Tarantula](output_ImageNet/final_class_tarantula.png)
-
-## Project Structure
+The model consists of several key components:
 
 ```
-├── models/                # Model architecture
-│   ├── modules.py         # Basic building blocks
-│   ├── text_encoder.py    # Text embedding functions
-│   ├── time_encoder.py    # Timestep embedding
-│   └── unet.py            # Conditional UNet architecture
-├── output_ImageNet/       # Generated outputs
-├── diffusion.py           # Core diffusion logic
-├── plot_func.py           # Visualization utilities
-├── preprocess.py          # Data preprocessing
-└── web.py                 # Web interface
+models/
+├── modules.py      # Core building blocks
+├── text_encoder.py # Text embedding generation
+├── time_encoder.py # Timestep encoding
+└── unet.py        # Main U-Net architecture
 ```
 
-## How It Works
-
-1. **Forward Diffusion**: Gradually adds noise to images according to a schedule
-2. **Training**: Model learns to predict and remove noise at each timestep
-3. **Sampling**: Generate new images by starting with random noise and iteratively denoising
+<p align="center">
+  <img src="output_ImageNet/final_class_tarantula.png" alt="Sample Generation" width="450" style="border-radius: 12px">
+</p>
 
 ## Web Interface
 
-Launch the web interface to interact with the model:
+The project includes a sleek web interface for easy interaction with the model:
 
-```bash
-python web.py
-```
+<p align="center">
+  <img src="output_ImageNet/web.png" alt="Web Interface" width="600" style="border-radius: 12px">
+</p>
 
 Features:
-- Enter text descriptions to generate images
-- Control the number of generated samples
-- View the step-by-step generation process
-
-## Technical Details
-
-- **Architecture**: Conditional UNet with timestep and text embeddings
-- **Text Encoding**: Sentence transformers for text embeddings
-- **Training**: Trained on ImageNet dataset with a diffusion process of 1000 timesteps
-- **Visualization**: Matplotlib and custom plotting functions for process visualization
-
-## Requirements
-
-- PyTorch
-- Torchvision
-- Sentence Transformers
-- Gradio
-- Matplotlib
-- NumPy
-- tqdm
+- Text prompt input
+- Multiple image generation
+- Process visualization
+- Real-time generation progress
 
 ## Getting Started
 
-1. Clone the repository
-2. Install dependencies: `pip install -r requirements.txt`
-3. Run the web interface: `python web.py`
-4. Enter text prompts and generate images
+1. **Clone the Repository:**
+   ```bash
+   git clone https://github.com/yourusername/conditional-diffusion.git
+   cd conditional-diffusion
+   ```
 
-## Training
+2. **Install Dependencies:**
+   ```bash
+   pip install torch torchvision sentence-transformers gradio
+   ```
 
-To train the model on your own dataset:
+3. **Launch the Web Interface:**
+   ```bash
+   python web.py
+   ```
 
-```bash
-python diffusion.py
-```
+## Model Components
 
-The training process will save model checkpoints and visualizations to the `output_ImageNet` directory.
+### 1. Diffusion Process
+- Forward diffusion adds noise gradually
+- Reverse diffusion learns to remove noise
+- Conditional generation guided by text embeddings
+
+### 2. Architecture Details
+- UNet backbone with skip connections
+- Text conditioning through cross-attention
+- Time embedding using sinusoidal positions
+- Batch normalization for stable training
+
+### 3. Dataset
+- [Tiny ImageNet](https://paperswithcode.com/dataset/tiny-imagenet), over 1Million images and 200 classes
+
+### 3. Training Process
+- Dataset: ImageNet subset
+- Text embeddings: SentenceTransformer
+- Loss: MSE between predicted and actual noise
+- Optimizer: AdamW with gradient scaling
+
+## Sample Generations
+
+Generate images from text descriptions like:
+- "red apple"
+- "golden retriever"
+- "sunset over mountains"
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---

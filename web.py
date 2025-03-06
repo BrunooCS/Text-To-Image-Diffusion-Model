@@ -338,7 +338,7 @@ with gr.Blocks(css=custom_css, title="AI Image Generator") as app:
 
 if __name__ == "__main__":
     # Set your model path accordingly
-    model_path = "output_ImageNet/model_epoch_250.pt"
+    model_path = "output_ImageNet/model_epoch_200.pt"
     os.makedirs("output_visualization", exist_ok=True)
     model = load_model_and_label_map(model_path)
     app.launch()
