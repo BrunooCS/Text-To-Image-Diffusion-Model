@@ -45,11 +45,18 @@ This project implements a conditional diffusion model that generates images from
 The model consists of several key components:
 
 ```
-models/
-├── modules.py      # Core building blocks
-├── text_encoder.py # Text embedding generation
-├── time_encoder.py # Timestep encoding
-└── unet.py        # Main U-Net architecture
+├── models/
+│   ├── modules.py        # Neural network building blocks
+│   ├── text_encoder.py   # Text embedding module
+│   ├── time_encoder.py   # Timestep encoding module
+│   └── unet.py           # Conditional UNet architecture
+│
+├── output_ImageNet/      # Generated outputs and visualizations
+│
+├── diffusion.py          # Core diffusion model implementation
+├── plot_func.py          # Visualization utilities
+├── preprocess.py         # Data loading and preprocessing
+└── web.py                # Web interface for image generation
 ```
 
 <p align="center">
